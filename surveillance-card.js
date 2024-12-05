@@ -295,7 +295,6 @@ class SurveillanceCard extends LitElement {
         flex: 3;
         height: 100%;
         position: relative;
-        display: flex;
         align-items: center;
         justify-content: center;
         overflow: hidden;
