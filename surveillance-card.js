@@ -23,7 +23,10 @@ class SurveillanceCard extends LitElement {
       <div class="container thumbs-${this.thumbPosition}">
         <div class="thumbs">
           ${this.cameras.filter((c) => c.access_token).map((camera) => {
-              let thumbClass = camera.has_motion ? "thumb motion" : "thumb";
+              let thumbClass = camera.has_motion
+                ? "thumb motion"
+                : "thumb";
+              thumbClass += camera === this.selectedCamera ? " selected" : "";
 
               return html`
                 <div class="${thumbClass}" @click="${() => this._updateSelectedCamera(camera)}">
@@ -285,6 +288,11 @@ class SurveillanceCard extends LitElement {
 
       .thumb.motion > img {
         border-color: var(--accent-color);
+      }
+
+      .thumb.selected img {
+        border-color: var(--accent-color);
+       box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
       }
 
       img {
