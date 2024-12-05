@@ -143,7 +143,7 @@ class SurveillanceCard extends LitElement {
         last_motion: now,
         last_update: now,
         stream_url: "",
-        url: attributes?.entity_picture,
+        url: `${attributes?.entity_picture}&resolution=high`,
       };
     });
     this.updateCameras = this.throttle(() => this._updateCameras(), this.thumbInterval);
@@ -236,8 +236,36 @@ class SurveillanceCard extends LitElement {
     }, this.thumbInterval);
   }
 
+  throttle(callback, delay) {
+    let isThrottled = false,
+      args,
+      context;
+
+    function wrapper() {
+      if (isThrottled) {
+        args = arguments;
+        context = this;
+        return;
+      }
+
+      isThrottled = true;
+      callback.apply(this, arguments);
+
+      setTimeout(() => {
+        isThrottled = false;
+        if (args) {
+          wrapper.apply(context, args);
+          args = context = null;
+        }
+      }, delay);
+    }
+
+    return wrapper;
+  }
+
   static get styles() {
     return css`
+      /* Full CSS including all new changes */
       .container {
         height: 100%;
         width: 100%;
@@ -367,28 +395,6 @@ class SurveillanceCard extends LitElement {
         margin-top: 3rem;
       }
     `;
-  }
-  throttle(callback, delay) {
-    let isThrottled = false,
-      args,
-      context;
-    function wrapper() {
-      if (isThrottled) {
-        args = arguments;
-        context = this;
-        return;
-      }
-      isThrottled = true;
-      callback.apply(this, arguments);
-      setTimeout(() => {
-        isThrottled = false;
-        if (args) {
-          wrapper.apply(context, args);
-          args = context = null;
-        }
-      }, delay);
-    }
-    return wrapper;
   }
 }
 customElements.define("surveillance-card", SurveillanceCard);
