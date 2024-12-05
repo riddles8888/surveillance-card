@@ -16,7 +16,6 @@ class SurveillanceCard extends LitElement {
     if (screenWidth < 520) screenSizeClass = "tinyScreen";
     else if (screenWidth < 1000) screenSizeClass = "smallScreen";
 
-    // Capture functionality not available in HA iOS and Android apps
     const showToolbarClass = (!this.isMobileApp && this.showCaptureButtons) ? "" : "hidden";
 
     return html`
@@ -31,7 +30,7 @@ class SurveillanceCard extends LitElement {
                 <img src="${camera.url}" alt="${camera.name}" loading="lazy" />
               </div>
               <div class="toolbar ${showToolbarClass} ${screenSizeClass}">
-                <a target="_blank" class="snapshot" href="${camera.url}" download="${camera.name.replace(' ','_') + "_" + new Date().toISOString() + ".jpg"}"></a>
+                <a target="_blank" class="snapshot" href="${camera.url}" download="${camera.name.replace(' ', '_') + "_" + new Date().toISOString() + ".jpg"}"></a>
                 <a class="record" @click="${(clickEvent) => this._recordSequence(clickEvent)}"></a>
               </div>
             `;
@@ -88,7 +87,7 @@ class SurveillanceCard extends LitElement {
       updateInterval: { type: Number },
       recordingDuration: { type: Number },
       showCaptureButtons: { type: Boolean },
-      liveStream: { type: Boolean }
+      liveStream: { type: Boolean },
     };
   }
 
@@ -124,8 +123,6 @@ class SurveillanceCard extends LitElement {
     this.liveStream = config.camera_view === "live";
     this.thumbPosition = config.thumb_position || "left";
 
-    // There must be better way to tell if HA front end running from app or browser
-    // Confirmed working on iOS, should be verified on Android app
     this.isMobileApp = navigator.userAgent.indexOf("HomeAssistant") > -1;
 
     const now = Date.now();
@@ -133,14 +130,16 @@ class SurveillanceCard extends LitElement {
       const { states = {} } = this.hass || {};
       const entity = states[camera.entity];
       const attributes = entity?.attributes;
-      const motionEntities = Array.isArray(camera.motion_entity) ? camera.motion_entity : [camera.motion_entity].filter(entityId => !!entityId);
+      const motionEntities = Array.isArray(camera.motion_entity)
+        ? camera.motion_entity
+        : [camera.motion_entity].filter((entityId) => !!entityId);
 
       return {
         access_token: attributes?.access_token,
         entity: camera.entity,
         motion_entities: motionEntities,
         name: attributes?.friendly_name,
-        has_motion: motionEntities.some(entityId => states[entityId]?.state === "on"),
+        has_motion: motionEntities.some((entityId) => states[entityId]?.state === "on"),
         last_motion: now,
         last_update: now,
         stream_url: "",
@@ -159,7 +158,7 @@ class SurveillanceCard extends LitElement {
     for (const camera of this.cameras) {
       const hadMotion = camera.has_motion === true;
       const { motion_entities } = camera;
-      camera.has_motion = motion_entities.some(entityId => states[entityId]?.state === "on");
+      camera.has_motion = motion_entities.some((entityId) => states[entityId]?.state === "on");
       if (camera.has_motion) {
         camera.last_motion = now;
       }
@@ -169,7 +168,6 @@ class SurveillanceCard extends LitElement {
         activatedCameras.push(camera);
       }
 
-      // update if there was just motion occurred or the thumb interval was reached.
       if (motionActivated || now - camera.last_update > this.thumbInterval) {
         camera.last_update = now;
       }
@@ -177,12 +175,14 @@ class SurveillanceCard extends LitElement {
       const attributes = states[camera.entity]?.attributes || {};
       camera.access_token = attributes.access_token;
       camera.name = attributes.friendly_name;
-      camera.url = `${attributes.entity_picture}&last_update=${camera.last_update}`;
+      camera.url = `${attributes.entity_picture}&last_update=${camera.last_update}&resolution=high`;
       camera.stream_url = `/api/camera_proxy_stream/${camera.entity}?token=${camera.access_token}&interval=${this.updateInterval}`;
     }
 
     if (this.focusOnMotion && activatedCameras.length > 0) {
-      this._updateSelectedCamera(activatedCameras.find((c) => c === this.selectedCamera) || activatedCameras[0]);
+      this._updateSelectedCamera(
+        activatedCameras.find((c) => c === this.selectedCamera) || activatedCameras[0]
+      );
     }
 
     this.cameras.sort(this._cameraSortComparer);
@@ -202,13 +202,11 @@ class SurveillanceCard extends LitElement {
   }
 
   _cameraSortComparer(cameraA, cameraB) {
-    // prefer has_motion
     if (cameraA.has_motion < cameraB.has_motion) {
       return 1;
     }
 
     if (cameraA.has_motion === cameraB.has_motion) {
-      // prefer last_update
       if (cameraA.last_update < cameraB.last_update) {
         return 0;
       }
@@ -217,25 +215,24 @@ class SurveillanceCard extends LitElement {
     }
   }
 
-  _recordSequence(clickEvent){
+  _recordSequence(clickEvent) {
     let currentThumbSnapshotBtn = clickEvent.srcElement.previousElementSibling;
     let cameraThumbContainer = clickEvent.srcElement.parentElement.previousElementSibling;
 
-    let totalSnapshots = this.recordingDuration/(this.thumbInterval/1000);
+    let totalSnapshots = this.recordingDuration / (this.thumbInterval / 1000);
     let snapshotCount = 1;
 
     currentThumbSnapshotBtn.click();
     cameraThumbContainer.classList.add("recording");
 
-    let snapshotInterval = setInterval(function(){
+    let snapshotInterval = setInterval(function () {
       currentThumbSnapshotBtn.click();
       snapshotCount++;
 
-      if (snapshotCount>totalSnapshots) {
+      if (snapshotCount > totalSnapshots) {
         cameraThumbContainer.classList.remove("recording");
         clearInterval(snapshotInterval);
       }
-
     }, this.thumbInterval);
   }
 
@@ -370,33 +367,6 @@ class SurveillanceCard extends LitElement {
         margin-top: 3rem;
       }
     `;
-  }
-
-    throttle(callback, delay) {
-    let isThrottled = false,
-      args,
-      context;
-
-    function wrapper() {
-      if (isThrottled) {
-        args = arguments;
-        context = this;
-        return;
-      }
-
-      isThrottled = true;
-      callback.apply(this, arguments);
-
-      setTimeout(() => {
-        isThrottled = false;
-        if (args) {
-          wrapper.apply(context, args);
-          args = context = null;
-        }
-      }, delay);
-    }
-
-    return wrapper;
   }
 }
 customElements.define("surveillance-card", SurveillanceCard);
