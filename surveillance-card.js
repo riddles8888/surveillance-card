@@ -92,7 +92,152 @@ class SurveillanceCard extends LitElement {
     };
   }
 
-  // The rest of the JavaScript code remains unchanged...
+  get hass() {
+    return this._hass;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this.updateCameras();
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.thumbUpdater = setInterval(() => this.updateCameras(), this.thumbInterval);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    clearInterval(this.thumbUpdater);
+  }
+
+  setConfig(config) {
+    if (!config.cameras) {
+      throw new Error("You need to define cameras");
+    }
+
+    this.focusOnMotion = config.focus_motion !== false;
+    this.thumbInterval = (config.thumb_interval || 10.0) * 1000;
+    this.updateInterval = config.update_interval || 1.0;
+    this.recordingDuration = config.recording_duration || 10.0;
+    this.showCaptureButtons = config.show_capture_buttons !== false;
+    this.liveStream = config.camera_view === "live";
+    this.thumbPosition = config.thumb_position || "left";
+
+    // There must be better way to tell if HA front end running from app or browser
+    // Confirmed working on iOS, should be verified on Android app
+    this.isMobileApp = navigator.userAgent.indexOf("HomeAssistant") > -1;
+
+    const now = Date.now();
+    this.cameras = config.cameras.map((camera) => {
+      const { states = {} } = this.hass || {};
+      const entity = states[camera.entity];
+      const attributes = entity?.attributes;
+      const motionEntities = Array.isArray(camera.motion_entity) ? camera.motion_entity : [camera.motion_entity].filter(entityId => !!entityId);
+
+      return {
+        access_token: attributes?.access_token,
+        entity: camera.entity,
+        motion_entities: motionEntities,
+        name: attributes?.friendly_name,
+        has_motion: motionEntities.some(entityId => states[entityId]?.state === "on"),
+        last_motion: now,
+        last_update: now,
+        stream_url: "",
+        url: attributes?.entity_picture,
+      };
+    });
+    this.updateCameras = this.throttle(() => this._updateCameras(), this.thumbInterval);
+    this._updateSelectedCamera();
+  }
+
+  _updateCameras() {
+    const now = Date.now();
+    const { states = {} } = this.hass || {};
+    const activatedCameras = [];
+
+    for (const camera of this.cameras) {
+      const hadMotion = camera.has_motion === true;
+      const { motion_entities } = camera;
+      camera.has_motion = motion_entities.some(entityId => states[entityId]?.state === "on");
+      if (camera.has_motion) {
+        camera.last_motion = now;
+      }
+
+      const motionActivated = !hadMotion && camera.has_motion;
+      if (motionActivated) {
+        activatedCameras.push(camera);
+      }
+
+      // update if there was just motion occurred or the thumb interval was reached.
+      if (motionActivated || now - camera.last_update > this.thumbInterval) {
+        camera.last_update = now;
+      }
+
+      const attributes = states[camera.entity]?.attributes || {};
+      camera.access_token = attributes.access_token;
+      camera.name = attributes.friendly_name;
+      camera.url = `${attributes.entity_picture}&last_update=${camera.last_update}`;
+      camera.stream_url = `/api/camera_proxy_stream/${camera.entity}?token=${camera.access_token}&interval=${this.updateInterval}`;
+    }
+
+    if (this.focusOnMotion && activatedCameras.length > 0) {
+      this._updateSelectedCamera(activatedCameras.find((c) => c === this.selectedCamera) || activatedCameras[0]);
+    }
+
+    this.cameras.sort(this._cameraSortComparer);
+    this.cameras = [...this.cameras];
+  }
+
+  _updateSelectedCamera(camera) {
+    if (!camera || !camera.access_token) {
+      let availableCameras = this.cameras.filter((c) => c.access_token && c.has_motion);
+      availableCameras.sort(this._cameraSortComparer);
+      camera = availableCameras[0] || this.cameras[0];
+    }
+
+    if (this.selectedCamera !== camera) {
+      this.selectedCamera = camera;
+    }
+  }
+
+  _cameraSortComparer(cameraA, cameraB) {
+    // prefer has_motion
+    if (cameraA.has_motion < cameraB.has_motion) {
+      return 1;
+    }
+
+    if (cameraA.has_motion === cameraB.has_motion) {
+      // prefer last_update
+      if (cameraA.last_update < cameraB.last_update) {
+        return 0;
+      }
+
+      return cameraA.last_update === cameraB.last_update ? 0 : -1;
+    }
+  }
+
+  _recordSequence(clickEvent){
+    let currentThumbSnapshotBtn = clickEvent.srcElement.previousElementSibling;
+    let cameraThumbContainer = clickEvent.srcElement.parentElement.previousElementSibling;
+
+    let totalSnapshots = this.recordingDuration/(this.thumbInterval/1000);
+    let snapshotCount = 1;
+
+    currentThumbSnapshotBtn.click();
+    cameraThumbContainer.classList.add("recording");
+
+    let snapshotInterval = setInterval(function(){
+      currentThumbSnapshotBtn.click();
+      snapshotCount++;
+
+      if (snapshotCount>totalSnapshots) {
+        cameraThumbContainer.classList.remove("recording");
+        clearInterval(snapshotInterval);
+      }
+
+    }, this.thumbInterval);
+  }
 
   static get styles() {
     return css`
